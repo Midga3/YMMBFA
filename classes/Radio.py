@@ -1,4 +1,5 @@
 from random import random
+
 from yandex_music import Track
 
 
@@ -26,7 +27,9 @@ class Radio:
     async def play_next(self) -> Track:
         # send prev track finalize info
         await self.__send_play_end_track(self.current_track, self.play_id)
-        await self.__send_play_end_radio(self.current_track, self.station_tracks.batch_id)
+        await self.__send_play_end_radio(
+            self.current_track, self.station_tracks.batch_id
+        )
 
         # get next index
         self.index += 1
@@ -40,12 +43,18 @@ class Radio:
 
     async def __update_radio_batch(self, queue=None):
         self.index = 0
-        self.station_tracks = await self.client.rotor_station_tracks(self.station_id, queue=queue)
+        self.station_tracks = await self.client.rotor_station_tracks(
+            self.station_id, queue=queue
+        )
         await self.__send_start_radio(self.station_tracks.batch_id)
 
     async def __update_current_track(self):
         self.play_id = self.__generate_play_id()
-        track = (await self.client.tracks([self.station_tracks.sequence[self.index].track.track_id]))[0]
+        track = (
+            await self.client.tracks(
+                [self.station_tracks.sequence[self.index].track.track_id]
+            )
+        )[0]
         await self.__send_play_start_track(track, self.play_id)
         await self.__send_play_start_radio(track, self.station_tracks.batch_id)
         return track
@@ -58,7 +67,7 @@ class Radio:
     async def __send_play_start_track(self, track, play_id):
         total_seconds = track.duration_ms / 1000
         await self.client.play_audio(
-            from_='desktop_win-home-playlist_of_the_day-playlist-default',
+            from_="desktop_win-home-playlist_of_the_day-playlist-default",
             track_id=track.id,
             album_id=track.albums[0].id,
             play_id=play_id,
@@ -68,15 +77,16 @@ class Radio:
         )
 
     async def __send_play_start_radio(self, track, batch_id):
-        await self.client.rotor_station_feedback_track_started(station=self.station_id, track_id=track.id,
-                                                               batch_id=batch_id)
+        await self.client.rotor_station_feedback_track_started(
+            station=self.station_id, track_id=track.id, batch_id=batch_id
+        )
 
     async def __send_play_end_track(self, track, play_id):
         # played_seconds = 5.0
         played_seconds = track.duration_ms / 1000
         total_seconds = track.duration_ms / 1000
         await self.client.play_audio(
-            from_='desktop_win-home-playlist_of_the_day-playlist-default',
+            from_="desktop_win-home-playlist_of_the_day-playlist-default",
             track_id=track.id,
             album_id=track.albums[0].id,
             play_id=play_id,
@@ -88,9 +98,16 @@ class Radio:
     async def __send_play_end_radio(self, track, batch_id):
         played_seconds = track.duration_ms / 1000
         await self.client.rotor_station_feedback_track_finished(
-            station=self.station_id, track_id=track.id, total_played_seconds=played_seconds, batch_id=batch_id
+            station=self.station_id,
+            track_id=track.id,
+            total_played_seconds=played_seconds,
+            batch_id=batch_id,
         )
 
     @staticmethod
     def __generate_play_id():
-        return '%s-%s-%s' % (int(random() * 1000), int(random() * 1000), int(random() * 1000))
+        return "%s-%s-%s" % (
+            int(random() * 1000),
+            int(random() * 1000),
+            int(random() * 1000),
+        )
