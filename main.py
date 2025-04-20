@@ -7,6 +7,7 @@ from dotenv import dotenv_values
 from fastapi import FastAPI, Query
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 from yandex_music import ClientAsync
 
 from classes.Info import Info
@@ -21,6 +22,14 @@ config: dict[str, str] = dotenv_values(".env")  # type: ignore
 client_key: str = config["LASTFM_API_KEY"]
 client_secret: str = config["LASTFM_API_SECRET"]
 app = FastAPI(docs_url=None)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origin_regex=".*",
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.get("/docs", include_in_schema=False)
