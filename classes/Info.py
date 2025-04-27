@@ -12,14 +12,10 @@ class Info:
     def __init__(
         self,
         client: ClientAsync,
-        lastfm_username: str | None = None,
-        lastfm_network: str | None = None,
     ):
         self.client = client
         self.radio = Radio(client)
         self.first_track = None
-        self.lastfm_username = lastfm_username
-        self.lastfm_network = lastfm_network
 
     @staticmethod
     async def get_img_uri(cover_uri: str) -> str:
@@ -39,7 +35,7 @@ class Info:
         try:
             duration = round(track.duration_ms / 1000)
             return {
-                "track_id": int(track.track_id.split(":")[0]),
+                "track_id": int(track.track_id.split(":")[0]) if track.track_id.split(":")[0].isdigit() else track.track_id,
                 "title": track.title,
                 "artist": (await self.get_artists(track)),
                 "img": (await self.get_img_uri(track.cover_uri)),
@@ -63,17 +59,38 @@ class Info:
                 status_code=500, detail="Failed to fetch track info by ID"
             ) from e
 
+    async def get_playlist_info(self, playlist, skip: int, count: int):
+        tracks_short = playlist.tracks
+        total = len(tracks_short)
+        tracks_short = tracks_short[skip: skip + count]
+
+        data = {
+            "skipped": skip,
+            "count": len(tracks_short),
+            "total": total,
+            "tracks": []
+        }
+
+        for track_short in tracks_short:
+            track_id_part = track_short.track_id.split(":")[0]
+
+            if not track_id_part.isdigit():
+                continue
+
+            try:
+                track = await track_short.fetch_track_async()
+                track_info = await self.get_track_info(track)
+                data["tracks"].append(track_info)
+            except Exception as e:
+                print(f"Skipping track {track_short.track_id} due to error: {e}")
+                continue
+
+        return data
+
     async def get_favourite_songs(self, skip, count):
         playlist = await self.client.users_likes_tracks()
-        playlist = await playlist.fetch_tracks_async()
-        total = len(playlist)
-        playlist = playlist[skip:]
-        playlist = playlist[:count]
-        data = {"skipped": skip, "count": count, "total": total, "tracks": []}
-        for track in playlist:
-            track1 = await self.get_track_info(track)
-            data["tracks"].append(track1)
-        return data
+        return await self.get_playlist_info(playlist, skip, count)
+
 
     async def get_album_info(self, album):
         try:
@@ -161,25 +178,6 @@ class Info:
             releases.append(data)
         return releases
 
-    async def get_current_track(self):
-        if self.lastfm_network is not None:
-            data = await self.lastfm_network.user_get_recent_tracks(
-                self.lastfm_username, limit=1
-            )
-            artist_name = data["recenttracks"]["track"][0]["artist"]["name"]
-            track_name = data["recenttracks"]["track"][0]["name"]
-            album_name = data["recenttracks"]["track"][0]["album"]["#text"]
-            searching_track = await self.client.search(
-                f"{artist_name} {track_name} {album_name}"
-            )
-            current_track = searching_track["best"]["result"]
-            await self.lastfm_network._session.close()  # че за хуйня, пукчарм жалуется
-            return await self.get_track_info(current_track)
-        queues = await self.client.queues_list()
-        last_queue = await self.client.queue(queues[0].id)
-        last_track_id = last_queue.get_current_track()
-        current_track = await last_track_id.fetch_track_async()
-        return await self.get_track_info(current_track)
 
     async def get_artist_info(self, artist_id):
         try:
@@ -220,15 +218,6 @@ class Info:
             raise HTTPException(status_code=500, detail="Failed to like album") from e
 
     async def get_like_tracks_by_username(
-        self, username, skip, count
-    ):  # TODO: Сделать функцию get_playlist_info
+        self, username, skip, count):
         playlist = await self.client.users_likes_tracks(username)
-        playlist = await playlist.fetch_tracks_async()
-        total = len(playlist)
-        playlist = playlist[skip:]
-        playlist = playlist[:count]
-        data = {"skipped": skip, "count": count, "total": total, "tracks": []}
-        for track in playlist:
-            track1 = await self.get_track_info(track)
-            data["tracks"].append(track1)
-        return data
+        return await self.get_playlist_info(playlist, skip, count)
