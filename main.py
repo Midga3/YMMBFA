@@ -3,7 +3,7 @@ import string
 import json
 
 import aiohttp
-from fastapi import FastAPI, Header, Depends
+from fastapi import FastAPI, HTTPException, Header, Depends
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -23,7 +23,7 @@ app.add_middleware(
 
 
 def generate_device_id(length: int = 16) -> str:
-    return ''.join(random.choices(string.ascii_lowercase, k=length))
+    return "".join(random.choices(string.ascii_lowercase, k=length))
 
 
 async def get_info(ya_token: str = Header(..., title="Yandex Music Token")) -> Info:
@@ -68,7 +68,9 @@ async def get_tracks_by_ids(track_ids: str, info: Info = Depends(get_info)):
 
 
 @app.get("/favourite_songs")
-async def get_favourite_tracks(skip: int = 0, count: int = 25, info: Info = Depends(get_info)):
+async def get_favourite_tracks(
+    skip: int = 0, count: int = 25, info: Info = Depends(get_info)
+):
     return await info.get_favourite_songs(skip, count)
 
 
@@ -93,7 +95,9 @@ async def get_track_from_station(info: Info = Depends(get_info)):
 
 
 @app.get("/new_release")
-async def get_new_release(skip: int = 0, count: int = 10, info: Info = Depends(get_info)):
+async def get_new_release(
+    skip: int = 0, count: int = 10, info: Info = Depends(get_info)
+):
     return await info.get_new_releases(skip, count)
 
 
@@ -113,7 +117,12 @@ async def dislike_track(track_id: int, info: Info = Depends(get_info)):
 
 
 @app.get("/get_current_track_beta")
-async def get_current_track_beta(info: Info = Depends(get_info), ya_token: str = Header(...)):
+async def get_current_track_beta(
+    info: Info = Depends(get_info), ya_token: str = Header(...)
+):
+    if ya_token == "<your token>":
+        raise HTTPException(400, "Change token!!!")
+
     device_id = generate_device_id()
     ws_proto = {
         "Ynison-Device-Id": device_id,
@@ -133,7 +142,11 @@ async def get_current_track_beta(info: Info = Depends(get_info), ya_token: str =
                     "playable_list": [],
                     "options": {"repeat_mode": "NONE"},
                     "entity_context": "BASED_ON_ENTITY_BY_DEFAULT",
-                    "version": {"device_id": device_id, "version": 9021243204784341000, "timestamp_ms": 0},
+                    "version": {
+                        "device_id": device_id,
+                        "version": 9021243204784341000,
+                        "timestamp_ms": 0,
+                    },
                     "from_optional": "",
                 },
                 "status": {
@@ -141,11 +154,19 @@ async def get_current_track_beta(info: Info = Depends(get_info), ya_token: str =
                     "paused": True,
                     "playback_speed": 1,
                     "progress_ms": 0,
-                    "version": {"device_id": device_id, "version": 8321822175199937000, "timestamp_ms": 0},
+                    "version": {
+                        "device_id": device_id,
+                        "version": 8321822175199937000,
+                        "timestamp_ms": 0,
+                    },
                 },
             },
             "device": {
-                "capabilities": {"can_be_player": True, "can_be_remote_controller": False, "volume_granularity": 16},
+                "capabilities": {
+                    "can_be_player": True,
+                    "can_be_remote_controller": False,
+                    "volume_granularity": 16,
+                },
                 "info": {
                     "device_id": device_id,
                     "type": "WEB",
@@ -169,7 +190,7 @@ async def get_current_track_beta(info: Info = Depends(get_info), ya_token: str =
                 "Sec-WebSocket-Protocol": f"Bearer, v2, {json.dumps(ws_proto)}",
                 "Origin": "http://music.yandex.ru",
                 "Authorization": f"OAuth {ya_token}",
-            }
+            },
         ) as ws:
             await ws.send_str(json.dumps(payload))
             response = await ws.receive()
@@ -190,7 +211,9 @@ async def get_current_track_beta(info: Info = Depends(get_info), ya_token: str =
 
 
 @app.get("/get_likes_from_username")
-async def get_likes_from_username(username: str, skip: int = 0, count: int = 10, info: Info = Depends(get_info)):
+async def get_likes_from_username(
+    username: str, skip: int = 0, count: int = 10, info: Info = Depends(get_info)
+):
     return await info.get_like_tracks_by_username(username, skip, count)
 
 
@@ -215,17 +238,27 @@ async def play_ynison_track(
                     "current_playable_index": 0,
                     "entity_id": "",
                     "entity_type": "VARIOUS",
-                    "playable_list": [{"playable_id": track_id, "playable_type": "TRACK"}],
+                    "playable_list": [
+                        {"playable_id": track_id, "playable_type": "TRACK"}
+                    ],
                     "options": {"repeat_mode": "ALL"},
                     "entity_context": "BASED_ON_ENTITY_BY_DEFAULT",
-                    "version": {"device_id": device_id, "version": 3487536190692794400, "timestamp_ms": 0},
+                    "version": {
+                        "device_id": device_id,
+                        "version": 3487536190692794400,
+                        "timestamp_ms": 0,
+                    },
                 },
                 "status": {
                     "duration_ms": 0,
                     "paused": False,
                     "playback_speed": 1,
                     "progress_ms": 0,
-                    "version": {"device_id": device_id, "version": 761129841314803700, "timestamp_ms": 0},
+                    "version": {
+                        "device_id": device_id,
+                        "version": 761129841314803700,
+                        "timestamp_ms": 0,
+                    },
                 },
             }
         }
@@ -238,23 +271,23 @@ async def play_ynison_track(
                 "Sec-WebSocket-Protocol": f"Bearer, v2, {json.dumps(ws_proto)}",
                 "Origin": "http://music.yandex.ru",
                 "Authorization": f"OAuth {ya_token}",
-            }
+            },
         ) as ws:
             await ws.send_str(json.dumps(payload))
     return True
 
+
 @app.get("/small_joke")
-async def lol_kek(
-    ya_token: str = Header(...),
-    info: Info = Depends(get_info)
-):
+async def lol_kek(ya_token: str = Header(...), info: Info = Depends(get_info)):
     await play_ynison_track(ya_token, 114422104)
     await info.like_track(114422104)
+
 
 app.mount("/", StaticFiles(directory="./static/", html=True))
 
 if __name__ == "__main__":
     import uvicorn
+
     try:
         uvicorn.run(app, host="0.0.0.0", port=8000)
     except KeyboardInterrupt:
