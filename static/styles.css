@@ -66,6 +66,18 @@ body {
     }
 }
 
+#telegram-channel {
+  background: #e83030;
+
+  &:hover {
+    background: #ce1717;
+  }
+
+  &:active {
+    background: #e51919;
+  }
+}
+
 
 @media (prefers-color-scheme: dark) {
     body {
@@ -111,5 +123,9 @@ body {
         &:active {
             background: #6E5DC6;
         }
+    }
+
+    #telegram-channel {
+      color: #f8f8ff;
     }
 }
