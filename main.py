@@ -1,6 +1,8 @@
+import asyncio
 import random
 import string
 import json
+from typing import Literal
 
 import aiohttp
 from fastapi import FastAPI, HTTPException, Header, Depends
@@ -20,6 +22,17 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.mount("/", StaticFiles(directory="./static/", html=True))
+
+client_session: aiohttp.ClientSession | None = None
+
+
+async def get_client_session() -> aiohttp.ClientSession:
+    global client_session
+    if client_session is None:
+        client_session = aiohttp.ClientSession()
+    return client_session
 
 
 def generate_device_id(length: int = 16) -> str:
@@ -46,9 +59,9 @@ async def create_ynison_ws(ya_token: str, ws_proto: dict) -> dict:
 
 
 @app.get("/docs", include_in_schema=False)
-async def custom_swagger_ui_html():
+async def custom_swagger_ui_html() -> str:
     return get_swagger_ui_html(
-        openapi_url=app.openapi_url,
+        openapi_url=app.openapi_url,  # type: ignore
         title=app.title + " - Swagger UI",
         oauth2_redirect_url=app.swagger_ui_oauth2_redirect_url,
         swagger_js_url="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js",
@@ -57,12 +70,12 @@ async def custom_swagger_ui_html():
 
 
 @app.get("/song/{track_id}")
-async def get_song_by_id(track_id: int, info: Info = Depends(get_info)):
+async def get_song_by_id(track_id: int, info: Info = Depends(get_info)) -> dict:
     return await info.get_track_by_id(track_id)
 
 
 @app.get("/songs")
-async def get_tracks_by_ids(track_ids: str, info: Info = Depends(get_info)):
+async def get_tracks_by_ids(track_ids: str, info: Info = Depends(get_info)) -> list:
     ids = map(int, track_ids.split(","))
     return [await info.get_track_by_id(track_id) for track_id in ids]
 
@@ -70,56 +83,58 @@ async def get_tracks_by_ids(track_ids: str, info: Info = Depends(get_info)):
 @app.get("/favourite_songs")
 async def get_favourite_tracks(
     skip: int = 0, count: int = 25, info: Info = Depends(get_info)
-):
+) -> dict:
     return await info.get_favourite_songs(skip, count)
 
 
 @app.get("/album/{album_id}")
-async def get_album_by_id(album_id: int, info: Info = Depends(get_info)):
+async def get_album_by_id(album_id: int, info: Info = Depends(get_info)) -> dict:
     return await info.get_albums_with_tracks(album_id)
 
 
 @app.get("/playlist_of_the_day")
-async def get_tracks_from_playlist_of_the_day(info: Info = Depends(get_info)):
+async def get_tracks_from_playlist_of_the_day(info: Info = Depends(get_info)) -> list:
     return await info.get_track_playlist_of_day()
 
 
 @app.get("/search")
-async def get_search(request: str, info: Info = Depends(get_info)):
+async def get_search(request: str, info: Info = Depends(get_info)) -> dict:
     return await info.search(request)
 
 
 @app.get("/get_track_from_station")
-async def get_track_from_station(info: Info = Depends(get_info)):
+async def get_track_from_station(info: Info = Depends(get_info)) -> dict:
     return await info.get_track_from_station()
 
 
 @app.get("/new_release")
 async def get_new_release(
     skip: int = 0, count: int = 10, info: Info = Depends(get_info)
-):
+) -> list:
     return await info.get_new_releases(skip, count)
 
 
 @app.get("/artist/{artist_id}")
-async def get_artist_info(artist_id: int, info: Info = Depends(get_info)):
+async def get_artist_info(artist_id: int, info: Info = Depends(get_info)) -> dict:
     return await info.get_artist_info(artist_id)
 
 
 @app.get("/like_track/{track_id}")
-async def like_track(track_id: int, info: Info = Depends(get_info)):
+async def like_track(track_id: int, info: Info = Depends(get_info)) -> dict:
     return await info.like_track(track_id)
 
 
 @app.get("/dislike_track/{track_id}")
-async def dislike_track(track_id: int, info: Info = Depends(get_info)):
+async def dislike_track(track_id: int, info: Info = Depends(get_info)) -> dict:
     return await info.unlike_track(track_id)
 
 
 @app.get("/get_current_track_beta")
 async def get_current_track_beta(
-    info: Info = Depends(get_info), ya_token: str = Header(...)
-):
+    info: Info = Depends(get_info),
+    ya_token: str = Header(...),
+    session: aiohttp.ClientSession = Depends(get_client_session),
+) -> dict:
     if ya_token == "<your token>":
         raise HTTPException(400, "Change token!!!")
 
@@ -183,18 +198,17 @@ async def get_current_track_beta(
         "activity_interception_type": "DO_NOT_INTERCEPT_BY_DEFAULT",
     }
 
-    async with aiohttp.ClientSession() as session:
-        async with session.ws_connect(
-            f"wss://{data['host']}/ynison_state.YnisonStateService/PutYnisonState",
-            headers={
-                "Sec-WebSocket-Protocol": f"Bearer, v2, {json.dumps(ws_proto)}",
-                "Origin": "http://music.yandex.ru",
-                "Authorization": f"OAuth {ya_token}",
-            },
-        ) as ws:
-            await ws.send_str(json.dumps(payload))
-            response = await ws.receive()
-            ynison = json.loads(response.data)
+    async with session.ws_connect(
+        f"wss://{data['host']}/ynison_state.YnisonStateService/PutYnisonState",
+        headers={
+            "Sec-WebSocket-Protocol": f"Bearer, v2, {json.dumps(ws_proto)}",
+            "Origin": "http://music.yandex.ru",
+            "Authorization": f"OAuth {ya_token}",
+        },
+    ) as ws:
+        await ws.send_str(json.dumps(payload))
+        response = await ws.receive()
+        ynison = json.loads(response.data)
 
     track = ynison["player_state"]["player_queue"]["playable_list"][
         ynison["player_state"]["player_queue"]["current_playable_index"]
@@ -213,7 +227,7 @@ async def get_current_track_beta(
 @app.get("/get_likes_from_username")
 async def get_likes_from_username(
     username: str, skip: int = 0, count: int = 10, info: Info = Depends(get_info)
-):
+) -> dict:
     return await info.get_like_tracks_by_username(username, skip, count)
 
 
@@ -221,7 +235,8 @@ async def get_likes_from_username(
 async def play_ynison_track(
     ya_token: str = Header(...),
     track_id: int = Header(...),
-):
+    session: aiohttp.ClientSession = Depends(get_client_session),
+) -> Literal[True]:
     device_id = generate_device_id()
     ws_proto = {
         "Ynison-Device-Id": device_id,
@@ -264,31 +279,32 @@ async def play_ynison_track(
         }
     }
 
-    async with aiohttp.ClientSession() as session:
-        async with session.ws_connect(
-            f"wss://{data['host']}/ynison_state.YnisonStateService/PutYnisonState",
-            headers={
-                "Sec-WebSocket-Protocol": f"Bearer, v2, {json.dumps(ws_proto)}",
-                "Origin": "http://music.yandex.ru",
-                "Authorization": f"OAuth {ya_token}",
-            },
-        ) as ws:
-            await ws.send_str(json.dumps(payload))
+    async with session.ws_connect(
+        f"wss://{data['host']}/ynison_state.YnisonStateService/PutYnisonState",
+        headers={
+            "Sec-WebSocket-Protocol": f"Bearer, v2, {json.dumps(ws_proto)}",
+            "Origin": "http://music.yandex.ru",
+            "Authorization": f"OAuth {ya_token}",
+        },
+    ) as ws:
+        await ws.send_str(json.dumps(payload))
     return True
 
 
 @app.get("/small_joke")
-async def lol_kek(ya_token: str = Header(...), info: Info = Depends(get_info)):
+async def lol_kek(ya_token: str = Header(...), info: Info = Depends(get_info)) -> None:
     await play_ynison_track(ya_token, 114422104)
     await info.like_track(114422104)
 
 
-app.mount("/", StaticFiles(directory="./static/", html=True))
-
-if __name__ == "__main__":
+async def main() -> None:
     import uvicorn
 
-    try:
-        uvicorn.run(app, host="0.0.0.0", port=8000)
-    except KeyboardInterrupt:
-        exit()
+    config = uvicorn.Config(app, "0.0.0.0", 8000)
+    server = uvicorn.Server(config)
+
+    await server.serve()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
