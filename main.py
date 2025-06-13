@@ -22,7 +22,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.mount("/", StaticFiles(directory="./static/", html=True))
 
 client_session: aiohttp.ClientSession | None = None
 
@@ -283,6 +282,9 @@ async def play_ynison_track(
 async def lol_kek(ya_token: str = Header(...), info: Info = Depends(get_info)) -> None:
     await play_ynison_track(ya_token, 114422104)
     await info.like_track(114422104)
+
+
+app.mount("/", StaticFiles(directory="./static/", html=True))
 
 
 async def main() -> None:
